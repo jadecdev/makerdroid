@@ -18,14 +18,25 @@ const functions = require('firebase-functions');
 const { sprintf } = require('sprintf-js');
 
 const strings = require('./strings');
+const i18n = require('i18n');
+
+const sessionsInfo = require('./hooks/sessions_info');
 
 process.env.DEBUG = 'actions-on-google:*';
+
+// i18n configuration
+i18n.configure({
+  locales: ['en-US', 'fr-FR'],
+  directory: __dirname + '/locales',
+  defaultLocale: 'en-US'
+});
 
 /** Dialogflow Actions {@link https://dialogflow.com/docs/actions-and-parameters#actions} */
 const Actions = {
   UNRECOGNIZED_DEEP_LINK: 'deeplink.unknown',
-  TELL_FACT: 'tell.fact',
-  TELL_CAT_FACT: 'tell.cat.fact'
+  // TELL_FACT: 'tell.fact',
+  // TELL_CAT_FACT: 'tell.cat.fact',
+  SESSION_INFO: 'action.sessions.byfilter'
 };
 /** Dialogflow Parameters {@link https://dialogflow.com/docs/actions-and-parameters#parameters} */
 const Parameters = {
@@ -124,156 +135,158 @@ const initData = app => {
  * @param {string} currentCategory The current category
  * @param {string} redirectCategory The category to redirect to since there are no facts left
  */
-const noFactsLeft = (app, currentCategory, redirectCategory) => {
-  const data = initData(app);
-  // Replace the outgoing facts context with different parameters
-  app.setContext(Contexts.FACTS, Lifespans.DEFAULT, { [Parameters.CATEGORY]: redirectCategory });
-  const response = [sprintf(strings.transitions.content.heardItAll, currentCategory, redirectCategory)];
-  const catFacts = data.facts.cats;
-  if (!catFacts || catFacts.length) {
-    response.push(strings.transitions.content.alsoCats);
-  }
-  response.push(strings.general.wantWhat);
-  return concat(response);
-};
+// const noFactsLeft = (app, currentCategory, redirectCategory) => {
+//   const data = initData(app);
+//   // Replace the outgoing facts context with different parameters
+//   app.setContext(Contexts.FACTS, Lifespans.DEFAULT, { [Parameters.CATEGORY]: redirectCategory });
+//   const response = [sprintf(strings.transitions.content.heardItAll, currentCategory, redirectCategory)];
+//   const catFacts = data.facts.cats;
+//   if (!catFacts || catFacts.length) {
+//     response.push(strings.transitions.content.alsoCats);
+//   }
+//   response.push(strings.general.wantWhat);
+//   return concat(response);
+// };
 
 /**
  * Say a fact
  * @param {DialogflowApp} app DialogflowApp instance
  * @return {void}
  */
-const tellFact = app => {
-  const data = initData(app);
-  const facts = data.facts.content;
-  for (const category of strings.categories) {
-    // Initialize categories with all the facts if they haven't been read
-    if (!facts[category.category]) {
-      facts[category.category] = category.facts.slice();
-    }
-  }
-  if (Object.values(facts).every(category => !category.length)) {
-    // If every fact category facts stored in app.data is empty
-    return app.tell(strings.general.heardItAll);
-  }
-  const parameter = Parameters.CATEGORY;
-  /** @type {string} */
-  const factCategory = app.getArgument(parameter);
-  /** @type {boolean} */
-  const screenOutput = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
-  const category = strings.categories.find(c => c.category === factCategory);
-  if (!category) {
-    /** @type {string} */
-    const action = app.getIntent();
-    console.error(`${parameter} parameter is unrecognized or ` +
-      `not provided by Dialogflow ${action} action`);
-    return;
-  }
-  const fact = getRandomFact(facts[category.category]);
-  if (!fact) {
-    const otherCategory = strings.categories.find(other => other !== category);
-    if (!otherCategory) {
-      return console.error(`No other category besides ${category.category} exists`);
-    }
-    if (!screenOutput) {
-      return app.ask(noFactsLeft(app, factCategory, otherCategory.category), strings.general.noInputs);
-    }
-    const suggestions = [otherCategory.suggestion];
-    const catFacts = data.facts.cats;
-    if (!catFacts || catFacts.length) {
-      // If cat facts not loaded or there still are cat facts left
-      suggestions.push(strings.cats.suggestion);
-    }
-    const richResponse = app.buildRichResponse()
-      .addSimpleResponse(noFactsLeft(app, factCategory, otherCategory.category))
-      .addSuggestions(suggestions);
-
-    return app.ask(richResponse, strings.general.noInputs);
-  }
-  const factPrefix = category.factPrefix;
-  if (!screenOutput) {
-    return app.ask(concat([factPrefix, fact, strings.general.nextFact]), strings.general.noInputs);
-  }
-  const image = getRandomValue(strings.content.images);
-  const [url, name] = image;
-  const card = app.buildBasicCard(fact)
-    .addButton(strings.general.linkOut, strings.content.link)
-    .setImage(url, name);
-
-  const richResponse = app.buildRichResponse()
-    .addSimpleResponse(factPrefix)
-    .addBasicCard(card)
-    .addSimpleResponse(strings.general.nextFact)
-    .addSuggestions(strings.general.suggestions.confirmation);
-
-  app.ask(richResponse, strings.general.noInputs);
-};
+// const tellFact = app => {
+//   const data = initData(app);
+//   const facts = data.facts.content;
+//   for (const category of strings.categories) {
+//     // Initialize categories with all the facts if they haven't been read
+//     if (!facts[category.category]) {
+//       facts[category.category] = category.facts.slice();
+//     }
+//   }
+//   if (Object.values(facts).every(category => !category.length)) {
+//     // If every fact category facts stored in app.data is empty
+//     return app.tell(strings.general.heardItAll);
+//   }
+//   const parameter = Parameters.CATEGORY;
+//   /** @type {string} */
+//   const factCategory = app.getArgument(parameter);
+//   /** @type {boolean} */
+//   const screenOutput = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
+//   const category = strings.categories.find(c => c.category === factCategory);
+//   if (!category) {
+//     /** @type {string} */
+//     const action = app.getIntent();
+//     console.error(`${parameter} parameter is unrecognized or ` +
+//       `not provided by Dialogflow ${action} action`);
+//     return;
+//   }
+//   const fact = getRandomFact(facts[category.category]);
+//   if (!fact) {
+//     const otherCategory = strings.categories.find(other => other !== category);
+//     if (!otherCategory) {
+//       return console.error(`No other category besides ${category.category} exists`);
+//     }
+//     if (!screenOutput) {
+//       return app.ask(noFactsLeft(app, factCategory, otherCategory.category), strings.general.noInputs);
+//     }
+//     const suggestions = [otherCategory.suggestion];
+//     const catFacts = data.facts.cats;
+//     if (!catFacts || catFacts.length) {
+//       // If cat facts not loaded or there still are cat facts left
+//       suggestions.push(strings.cats.suggestion);
+//     }
+//     const richResponse = app.buildRichResponse()
+//       .addSimpleResponse(noFactsLeft(app, factCategory, otherCategory.category))
+//       .addSuggestions(suggestions);
+//
+//     return app.ask(richResponse, strings.general.noInputs);
+//   }
+//   const factPrefix = category.factPrefix;
+//   if (!screenOutput) {
+//     return app.ask(concat([factPrefix, fact, strings.general.nextFact]), strings.general.noInputs);
+//   }
+//   const image = getRandomValue(strings.content.images);
+//   const [url, name] = image;
+//   const card = app.buildBasicCard(fact)
+//     .addButton(strings.general.linkOut, strings.content.link)
+//     .setImage(url, name);
+//
+//   const richResponse = app.buildRichResponse()
+//     .addSimpleResponse(factPrefix)
+//     .addBasicCard(card)
+//     .addSimpleResponse(strings.general.nextFact)
+//     .addSuggestions(strings.general.suggestions.confirmation);
+//
+//   app.ask(richResponse, strings.general.noInputs);
+// };
 
 /**
  * Say a cat fact
  * @param {DialogflowApp} app DialogflowApp instance
  * @return {void}
  */
-const tellCatFact = app => {
-  const data = initData(app);
-  if (!data.facts.cats) {
-    data.facts.cats = strings.cats.facts.slice();
-  }
-  const catFacts = data.facts.cats;
-  const fact = getRandomFact(catFacts);
-  /** @type {boolean} */
-  const screenOutput = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
-  if (!fact) {
-    // Add facts context to outgoing context list
-    app.setContext(Contexts.FACTS, Lifespans.DEFAULT, {});
-    // Replace outgoing cat-facts context with lifespan = 0 to end it
-    app.setContext(Contexts.CATS, Lifespans.END, {});
-    if (!screenOutput) {
-      return app.ask(strings.transitions.cats.heardItAll, strings.general.noInputs);
-    }
-    const richResponse = app.buildRichResponse()
-      .addSimpleResponse(strings.transitions.cats.heardItAll, strings.general.noInputs)
-      .addSuggestions(strings.general.suggestions.confirmation);
-
-    return app.ask(richResponse);
-  }
-  const factPrefix = sprintf(strings.cats.factPrefix, getRandomValue(strings.cats.sounds));
-  if (!screenOutput) {
-    // <speak></speak> is needed here since factPrefix is a SSML string and contains audio
-    return app.ask(`<speak>${concat([factPrefix, fact, strings.general.nextFact])}</speak>`, strings.general.noInputs);
-  }
-  const image = getRandomValue(strings.cats.images);
-  const [url, name] = image;
-  const card = app.buildBasicCard(fact)
-    .setImage(url, name)
-    .addButton(strings.general.linkOut, strings.cats.link);
-
-  const richResponse = app.buildRichResponse()
-    .addSimpleResponse(`<speak>${factPrefix}</speak>`)
-    .addBasicCard(card)
-    .addSimpleResponse(strings.general.nextFact)
-    .addSuggestions(strings.general.suggestions.confirmation);
-
-  app.ask(richResponse, strings.general.noInputs);
-};
+// const tellCatFact = app => {
+//   const data = initData(app);
+//   if (!data.facts.cats) {
+//     data.facts.cats = strings.cats.facts.slice();
+//   }
+//   const catFacts = data.facts.cats;
+//   const fact = getRandomFact(catFacts);
+//   /** @type {boolean} */
+//   const screenOutput = app.hasSurfaceCapability(app.SurfaceCapabilities.SCREEN_OUTPUT);
+//   if (!fact) {
+//     // Add facts context to outgoing context list
+//     app.setContext(Contexts.FACTS, Lifespans.DEFAULT, {});
+//     // Replace outgoing cat-facts context with lifespan = 0 to end it
+//     app.setContext(Contexts.CATS, Lifespans.END, {});
+//     if (!screenOutput) {
+//       return app.ask(strings.transitions.cats.heardItAll, strings.general.noInputs);
+//     }
+//     const richResponse = app.buildRichResponse()
+//       .addSimpleResponse(strings.transitions.cats.heardItAll, strings.general.noInputs)
+//       .addSuggestions(strings.general.suggestions.confirmation);
+//
+//     return app.ask(richResponse);
+//   }
+//   const factPrefix = sprintf(strings.cats.factPrefix, getRandomValue(strings.cats.sounds));
+//   if (!screenOutput) {
+//     // <speak></speak> is needed here since factPrefix is a SSML string and contains audio
+//     return app.ask(`<speak>${concat([factPrefix, fact, strings.general.nextFact])}</speak>`, strings.general.noInputs);
+//   }
+//   const image = getRandomValue(strings.cats.images);
+//   const [url, name] = image;
+//   const card = app.buildBasicCard(fact)
+//     .setImage(url, name)
+//     .addButton(strings.general.linkOut, strings.cats.link);
+//
+//   const richResponse = app.buildRichResponse()
+//     .addSimpleResponse(`<speak>${factPrefix}</speak>`)
+//     .addBasicCard(card)
+//     .addSimpleResponse(strings.general.nextFact)
+//     .addSuggestions(strings.general.suggestions.confirmation);
+//
+//   app.ask(richResponse, strings.general.noInputs);
+// };
 
 /** @type {Map<string, function(DialogflowApp): void>} */
 const actionMap = new Map();
 actionMap.set(Actions.UNRECOGNIZED_DEEP_LINK, unhandledDeepLinks);
-actionMap.set(Actions.TELL_FACT, tellFact);
-actionMap.set(Actions.TELL_CAT_FACT, tellCatFact);
+// actionMap.set(Actions.TELL_FACT, tellFact);
+actionMap.set(Actions.SESSION_INFO, sessionsInfo.list);
 
 /**
  * The entry point to handle a http request
  * @param {Request} request An Express like Request object of the HTTP request
  * @param {Response} response An Express like Response object to send back data
  */
-const factsAboutGoogle = functions.https.onRequest((request, response) => {
+const makerdroid = functions.https.onRequest((request, response) => {
   const app = new DialogflowApp({ request, response });
   console.log(`Request headers: ${JSON.stringify(request.headers)}`);
   console.log(`Request body: ${JSON.stringify(request.body)}`);
+  i18n.setLocale(app.getUserLocale());
+
   app.handleRequest(actionMap);
 });
 
 module.exports = {
-  factsAboutGoogle
+  makerdroid
 };

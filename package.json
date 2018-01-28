@@ -20,6 +20,7 @@
     "deep-freeze": "0.0.1",
     "firebase-admin": "^4.2.1",
     "firebase-functions": "^0.5.7",
+    "i18n": "^0.8.3",
     "sprintf-js": "^1.1.1"
   },
   "devDependencies": {
